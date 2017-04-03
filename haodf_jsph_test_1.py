@@ -86,17 +86,17 @@ for lblix in range(len(doctors)):
             pass
         else:
             for pat in this_page.xpath('//table[@class="doctorjy"]'):
-                curpat = pd.Series(index=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost'])
+                curpat = pd.Series({'lblix':lblix,'docix':docix},index=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost'])
                 #Time Processing
-                t = pat.xpath('//td[contains(@style,"tex-align:right;")]').extract_first()
-                try: t = parser.parse(t[3:])
+                t = pat.xpath('.//td[contains(@style,"text-align:right;")]/text()').extract_first()
+                try: t = parser.parse(t[3:]).strftime(r'%Y-%m-%d')
                 except: t = np.nan
                 curpat['time'] = t
 
                 #dlemd Processing
-                patbriefinfo = pat.xpath('//td[@class="dlemd"]')
+                patbriefinfo = pat.xpath('.//td[@class="dlemd"]')
                 ##aim
-                for i in patbriefinfo.xpath('//td[@colspan="3"]/span/text()').extract():
+                for i in patbriefinfo.xpath('.//td[@colspan="3"]/span/text()').extract():
                     t = i.split('：')
                     if t[0] in namspc: 
                         aim = [eval(namspc[t[0]])[i] if i in eval(namspc[t[0]]) else 1 for i in t[1].split('、')] 
@@ -106,7 +106,8 @@ for lblix in range(len(doctors)):
                 t = patbriefinfo.xpath('./table/tbody/tr')[-1].xpath('./td')
                 for i in t[:2]:
                     try:
-                        temp = namspc[i.xpath('text()').extract_first().split('：')[0]]
+                        text = i.xpath('text()').extract_first()
+                        if text: temp = namspc[text[:-1]]
                         try:
                             degr = eval(temp)[i.xpath('span/text()').extract_first()]
                         except:
@@ -114,9 +115,21 @@ for lblix in range(len(doctors)):
                         curpat[temp] = degr
                     except Exception as e:
                         print('Exception raised: %s'%e)
-                        break
+                        continue
                 
                 #tbody processing
-                pass
-        patdf = patdf.append(curpat,ignore_index=True)
+                patadditinfo = pat.xpath('.//tbody//td[@valign="top"][@height="40px"]')
+                for i in patadditinfo.xpath('div'):
+                    try:
+                        if not i.xpath('span/text()').extract_first(): continue
+                        temp = namspc[i.xpath('span/text()').extract_first()[:-1]]
+                        try:
+                            tval = i.xpath('text()').extract_first() if temp=='cost' else eval(temp)[i.xpath('text()').extract_first()]
+                        except:
+                            tval = 0
+                        curpat[temp] = tval
+                    except Exception as e:
+                        print('Exception raised: %s'%e)
+                        continue
+                patdf = patdf.append(curpat,ignore_index=True)
 log.close()
