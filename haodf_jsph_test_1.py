@@ -9,6 +9,7 @@ from dateutil import parser
 
 log = open('log.txt','a')
 print('----------\nlog start: %s\n----------'%datetime.today().strftime(r'%Y-%m-%d %H:%M'),file=log)
+dr = webdriver.PhantomJS()
 class WebContainer(object):
     def __init__(self,link,PhantomJSDriver=None):
         if PhantomJSDriver: self.dr = PhantomJSDriver
@@ -35,7 +36,6 @@ if 'doctors.data' in os.listdir() and 'doctors_labels.data' in os.listdir():
     with open('doctors_labels.data','rb') as f:
         doctors_labels = pickle.load(f)
 else:
-    dr = webdriver.PhantomJS()
     #省人医页面
     wc = WebContainer('http://www.haodf.com/hospital/DE4roiYGYZwX-bc2dcByMhc7g.htm',dr)
     sections = []
@@ -99,8 +99,8 @@ for lblix in range(len(doctors)):
                 for i in patbriefinfo.xpath('//td[@colspan="3"]/span/text()').extract():
                     t = i.split('：')
                     if t[0] in namspc: 
-                        aim = [eval(namspc[t[0]])[i] for i in t[1].split('、') if i in eval(namspc[t[0]] else 1]
-                        curpat[namspc[t[0]]] = aim
+                        aim = [eval(namspc[t[0]])[i] if i in eval(namspc[t[0]]) else 1 for i in t[1].split('、')] 
+                        curpat[namspc[t[0]]] = str(aim)
 
                 ##satisfaction
                 t = patbriefinfo.xpath('./table/tbody/tr')[-1].xpath('./td')
@@ -114,7 +114,9 @@ for lblix in range(len(doctors)):
                         curpat[temp] = degr
                     except Exception as e:
                         print('Exception raised: %s'%e)
+                        break
                 
                 #tbody processing
                 pass
+        patdf = patdf.append(curpat,ignore_index=True)
 log.close()
