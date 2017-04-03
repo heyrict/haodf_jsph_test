@@ -83,7 +83,18 @@ for lblix in range(len(doctors)):
             break 
         a = this_page.xpath('//td[@class="center orange"]/a/@href').extract_first()
         if a:
-            pass
+            #handling all patient data
+            wc = WebContainer(a)
+            templatel = a.split('.htm'); templatel[1]+='.htm'
+            if len(templatel)!=2: print('Error in handling adress: %s'%a);continue
+            curpagnum = 1
+            try:
+                totpagnum = int(wc.xpath('//a[@class="p_text"][@rel="true"]/text()').extract_first()[1:-1])
+            except Exception as e:
+                print('Error raised when finding all page numbers on page %s:\n\t%s'%(a,e))
+                continue
+            while curpagnum<=totpagnum:
+                
         else:
             for pat in this_page.xpath('//table[@class="doctorjy"]'):
                 curpat = pd.Series({'lblix':lblix,'docix':docix},index=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost'])
@@ -124,7 +135,7 @@ for lblix in range(len(doctors)):
                         if not i.xpath('span/text()').extract_first(): continue
                         temp = namspc[i.xpath('span/text()').extract_first()[:-1]]
                         try:
-                            tval = i.xpath('text()').extract_first() if temp=='cost' else eval(temp)[i.xpath('text()').extract_first()]
+                            tval = float(i.xpath('text()').extract_first()[:-1]) if temp=='cost' else eval(temp)[i.xpath('text()').extract_first()]
                         except:
                             tval = 0
                         curpat[temp] = tval
