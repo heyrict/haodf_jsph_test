@@ -19,7 +19,7 @@ class WebContainer(object):
             while(1):
                 try: self.dr.get(link);break
                 except Exception as e:
-                    print('Exception:',end='')
+                    print('Exception raised:',end='')
                     print(e)
                     print('Trying to rescrape...')
             self.contents = Selector(text=self.dr.page_source)
