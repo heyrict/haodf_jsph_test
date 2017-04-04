@@ -8,8 +8,7 @@ from pandas import DataFrame, Series
 from dateutil import parser
 
 dr = webdriver.PhantomJS()
-dr.set_page_load_timeout(30)
-max_iter=10
+dr.set_page_load_timeout(15)
 class WebContainer(object):
     def __init__(self,link,PhantomJSDriver=None,logfile=sys.stdout):
         if PhantomJSDriver: self.dr = PhantomJSDriver
@@ -117,11 +116,7 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile):
             doctors_labels = pickle.load(f)
     else:
         failed = True
-        for iter_no in range(max_iter):
-            try:
-                wc = WebContainer(link,dr,logfile); failed = False; break
-            except Exception as e: print(e)
-        if failed: return
+        wc = WebContainer(link,dr,logfile)
         sections = []
         for i in wc.xpath('//table[@id="hosbra"]//a[@class="blue"]'):
             sections.append((i.xpath('./text()').extract()[0],i.xpath('./@href').extract()[0]))
@@ -129,11 +124,7 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile):
         doctors = []
         doctors_labels = []
         for i in sections:
-            failed = True
-            for iter_no in range(max_iter):
-                try: wc = WebContainer(i[1],dr,logfile);failed=False;break
-                except Exception as e: print(e)
-            if failed: continue
+            wc = WebContainer(i[1],dr,logfile)
             all_pages = set(wc.xpath('//a[@class="p_num"][contains(@href,"_")]/@href').extract())
             doctors_on_this_section = [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
             for j in all_pages:
@@ -164,10 +155,7 @@ def scrape_doct_page(doctors,doctors_labels,logfile):
             if a:
                 #handling all patient data
                 failed = True
-                for iter_no in range(max_iter):
-                    try: wc = WebContainer(a,dr,logfile); failed = False; break
-                    except Exception as e: print(e)
-                if failed: continue
+                wc = WebContainer(a,dr,logfile)
                 a = wc.xpath('//td[@class="hdf_content"]/div[@class="p_bar"]/a[@class="p_num"]/@href').extract_first()
                 templatel = a.split('2.htm'); templatel[1]+='.htm'
                 if len(templatel)!=2: print('Error in handling adress: %s'%a);continue
@@ -179,14 +167,7 @@ def scrape_doct_page(doctors,doctors_labels,logfile):
                     continue
                 while curpagnum<=totpagnum:
                     if curpagnum != 1: 
-                        failed = True
-                        for iter_no in range(max_iter):
-                            try: 
-                                wc = WebContainer(str(curpagnum).join(templatel),dr,logfile)
-                                failed = False
-                                break
-                            except Exception as e: print(e)
-                        if failed: continue
+                        wc = WebContainer(str(curpagnum).join(templatel),dr,logfile)
                     else: wc = this_page
                     resdf = current_page_to_df(wc,logfile,lblix,docix)
                     if type(resdf) != type(None): patdf = patdf.append(resdf,ignore_index=True)
@@ -206,11 +187,7 @@ def get_all_hosp(link,prov_name,logfile):
         with open(curdir+'/hosp_list.data','rb') as f:
             l = pickle.load(f)
     else:
-        failed = True
-        for iter_no in range(max_iter):
-            try: wc = WebContainer(link,dr,logfile);failed=False;break
-            except Exception as e: print(e)
-        if failed: return
+        wc = WebContainer(link,dr,logfile)
         l = []
         for i in wc.xpath('//li/a[@target="_blank"]'):
             cn = i.xpath('./text()').extract_first()
@@ -228,14 +205,7 @@ def get_all_prov(logfile):
             l = pickle.load(f)
     else:
         failed = True
-        for iter_no in range(max_iter):
-            try:
-                wc = WebContainer('http://www.haodf.com/yiyuan/hebei/list.htm',dr,logfile)
-                failed = False
-                break
-            except Exception as e: print(e)
-            if iter_no==max_iter-1: return
-        if failed: return
+        wc = WebContainer('http://www.haodf.com/yiyuan/hebei/list.htm',dr,logfile)
         l = []
         for i in wc.xpath('//div[@class="kstl"]/a'):
             cn = i.xpath('./text()').extract_first()
