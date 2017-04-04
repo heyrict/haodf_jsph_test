@@ -9,13 +9,19 @@ from dateutil import parser
 
 dr = webdriver.PhantomJS()
 dr.set_page_load_timeout(30)
+max_iter=10
 class WebContainer(object):
     def __init__(self,link,PhantomJSDriver=None,logfile=sys.stdout):
         if PhantomJSDriver: self.dr = PhantomJSDriver
         else: self.dr = webdriver.PhantomJS()
         try:
             print('Now scraping %s'%link)
-            self.dr.get(link)
+            while(1):
+                try: self.dr.get(link);break
+                except Exception as e:
+                    print('Exception:',end='')
+                    print(e)
+                    print('Trying to rescrape...')
             self.contents = Selector(text=self.dr.page_source)
             print('Succeeded in scraping %s'%link,file=logfile)
         except Exception as e:
@@ -30,7 +36,7 @@ class WebContainer(object):
         return self.find(expression,kind='xpath')
 
 ##疗效及态度满意度
-sat_att = sat_eff = {'很不满意':1,'不满意':2,'一般':3,'满意':4,'很满意':5,'其他':0}
+sat_att = sat_eff = {'很不满意':2,'不满意':3,'一般':4,'满意':5,'很满意':6,'其他':0,'还不知道':1}
 ##看病目的
 aim = {'治疗':3,'未填':0,'诊断':2,'其他':1,'咨询问题':4}
 ##选择该医生的理由
@@ -44,6 +50,7 @@ namspc = {'看病目的':'aim','疗效':'sat_eff','态度':'sat_att','选择该�
 
 def current_page_to_df(this_page,logfile,lblix,docix):
 #从医生主页抓取所有患者信息
+    if type(this_page)==type(None): return
     global sat_att, sat_eff, aim, reason, reservation, status, namspc, temp
     curpatdf = DataFrame(columns=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost'])
     
@@ -69,12 +76,13 @@ def current_page_to_df(this_page,logfile,lblix,docix):
         for i in t[:2]:
             try:
                 text = i.xpath('text()').extract_first()
-                if text: temp = namspc[text[:-1]]
-                try:
-                    degr = eval(temp)[i.xpath('span/text()').extract_first()]
-                except:
-                    degr = 0
-                curpat[temp] = degr
+                if text: 
+                    temp = namspc[text[:-1]]
+                    try:
+                        degr = eval(temp)[i.xpath('span/text()').extract_first()]
+                    except:
+                        degr = 0
+                    curpat[temp] = degr
             except Exception as e:
                 print('Exception raised: %s'%e)
                 continue
@@ -108,7 +116,12 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile):
         with open(curdir+'/doctors_labels.data','rb') as f:
             doctors_labels = pickle.load(f)
     else:
-        wc = WebContainer(link,dr,logfile)
+        failed = True
+        for iter_no in range(max_iter):
+            try:
+                wc = WebContainer(link,dr,logfile); failed = False; break
+            except Exception as e: print(e)
+        if failed: return
         sections = []
         for i in wc.xpath('//table[@id="hosbra"]//a[@class="blue"]'):
             sections.append((i.xpath('./text()').extract()[0],i.xpath('./@href').extract()[0]))
@@ -116,10 +129,11 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile):
         doctors = []
         doctors_labels = []
         for i in sections:
-            try:
-                wc = WebContainer(i[1],dr,logfile)
-            except:
-                continue
+            failed = True
+            for iter_no in range(max_iter):
+                try: wc = WebContainer(i[1],dr,logfile);failed=False;break
+                except Exception as e: print(e)
+            if failed: continue
             all_pages = set(wc.xpath('//a[@class="p_num"][contains(@href,"_")]/@href').extract())
             doctors_on_this_section = [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
             for j in all_pages:
@@ -149,7 +163,11 @@ def scrape_doct_page(doctors,doctors_labels,logfile):
             a = this_page.xpath('//td[@class="center orange"]/a/@href').extract_first()
             if a:
                 #handling all patient data
-                wc = WebContainer(a,dr,logfile)
+                failed = True
+                for iter_no in range(max_iter):
+                    try: wc = WebContainer(a,dr,logfile); failed = False; break
+                    except Exception as e: print(e)
+                if failed: continue
                 a = wc.xpath('//td[@class="hdf_content"]/div[@class="p_bar"]/a[@class="p_num"]/@href').extract_first()
                 templatel = a.split('2.htm'); templatel[1]+='.htm'
                 if len(templatel)!=2: print('Error in handling adress: %s'%a);continue
@@ -160,13 +178,23 @@ def scrape_doct_page(doctors,doctors_labels,logfile):
                     print('Error raised when finding all page numbers on page %s:\n\t%s'%(a,e))
                     continue
                 while curpagnum<=totpagnum:
-                    if curpagnum != 1: wc = WebContainer(str(curpagnum).join(templatel),dr,logfile)
+                    if curpagnum != 1: 
+                        failed = True
+                        for iter_no in range(max_iter):
+                            try: 
+                                wc = WebContainer(str(curpagnum).join(templatel),dr,logfile)
+                                failed = False
+                                break
+                            except Exception as e: print(e)
+                        if failed: continue
                     else: wc = this_page
-                    patdf = patdf.append(current_page_to_df(wc,logfile,lblix,docix),ignore_index=True)
+                    resdf = current_page_to_df(wc,logfile,lblix,docix)
+                    if type(resdf) != type(None): patdf = patdf.append(resdf,ignore_index=True)
                     curpagnum += 1
                     
             else:
-                patdf = patdf.append(current_page_to_df(this_page,logfile,lblix,docix),ignore_index=True)
+                resdf = current_page_to_df(this_page,logfile,lblix,docix)
+                if type(resdf) != type(None): patdf = patdf.append(resdf,ignore_index=True)
     return patdf
 
 
@@ -178,7 +206,11 @@ def get_all_hosp(link,prov_name,logfile):
         with open(curdir+'/hosp_list.data','rb') as f:
             l = pickle.load(f)
     else:
-        wc = WebContainer(link,dr,logfile)
+        failed = True
+        for iter_no in range(max_iter):
+            try: wc = WebContainer(link,dr,logfile);failed=False;break
+            except Exception as e: print(e)
+        if failed: return
         l = []
         for i in wc.xpath('//li/a[@target="_blank"]'):
             cn = i.xpath('./text()').extract_first()
@@ -195,7 +227,15 @@ def get_all_prov(logfile):
         with open('all_prov.data','rb') as f:
             l = pickle.load(f)
     else:
-        wc = WebContainer('http://www.haodf.com/yiyuan/hebei/list.htm',dr,logfile)
+        failed = True
+        for iter_no in range(max_iter):
+            try:
+                wc = WebContainer('http://www.haodf.com/yiyuan/hebei/list.htm',dr,logfile)
+                failed = False
+                break
+            except Exception as e: print(e)
+            if iter_no==max_iter-1: return
+        if failed: return
         l = []
         for i in wc.xpath('//div[@class="kstl"]/a'):
             cn = i.xpath('./text()').extract_first()

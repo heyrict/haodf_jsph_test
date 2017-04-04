@@ -13,6 +13,8 @@ for prov in all_prov:
         
         if '%s'%prov[0] not in os.listdir(): os.mkdir(prov[0])
         if '%s'%(hosp[0]) not in os.listdir(prov[0]): os.mkdir('%s/%s'%(prov[0],hosp[0]))
-        scrape_doct_page(doctors,doctors_labels,logfile).to_excel('%s/%s'%(prov[0],hosp[0]),index=False)
+        if hosp[0]+'.csv' not in os.listdir(prov[0]):
+            print('%s.csv found in /%s. Skipping...'%(hosp[0],prov[0]))
+            scrape_doct_page(doctors,doctors_labels,logfile).to_csv('%s/%s.csv'%(prov[0],hosp[0]),index=False)
 
 log.close()
