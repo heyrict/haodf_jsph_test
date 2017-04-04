@@ -1,28 +1,27 @@
 # coding: utf-8
 from selenium import webdriver
 from scrapy import Selector
-import pickle, os
+import pickle, os, sys
 from datetime import datetime
 import pandas as pd, numpy as np
 from pandas import DataFrame, Series
 from dateutil import parser
 
-log = open('log.txt','a')
-print('----------\nlog start: %s\n----------'%datetime.today().strftime(r'%Y-%m-%d %H:%M'),file=log)
 dr = webdriver.PhantomJS()
+dr.set_page_load_timeout(30)
 class WebContainer(object):
-    def __init__(self,link,PhantomJSDriver=None):
+    def __init__(self,link,PhantomJSDriver=None,logfile=sys.stdout):
         if PhantomJSDriver: self.dr = PhantomJSDriver
         else: self.dr = webdriver.PhantomJS()
         try:
             print('Now scraping %s'%link)
             self.dr.get(link)
             self.contents = Selector(text=self.dr.page_source)
-            print('Succeeded in scraping %s'%link,file=log)
+            print('Succeeded in scraping %s'%link,file=logfile)
         except Exception as e:
             print('Failed to scrap %s'%link)
             print(e)
-            print('Failed to scrap %s'%link,file=log)
+            print('Failed to scrap %s'%link,file=logfile)
 
     def find(self,expression,kind='xpath'):
         return self.contents.xpath(expression)
@@ -43,7 +42,8 @@ status = {'有好转':3,'其他':1,'未见好转':2,'痊愈':4,'未填':0}
 ##名称匹配
 namspc = {'看病目的':'aim','疗效':'sat_eff','态度':'sat_att','选择该医生就诊的理由':'reason','本次挂号途径':'reservation','目前病情状态':'status','本次看病费用总计':'cost'}
 
-def current_page_to_df(this_page):
+def current_page_to_df(this_page,logfile,lblix,docix):
+#从医生主页抓取所有患者信息
     global sat_att, sat_eff, aim, reason, reservation, status, namspc, temp
     curpatdf = DataFrame(columns=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost'])
     
@@ -96,65 +96,112 @@ def current_page_to_df(this_page):
         curpatdf = curpatdf.append(curpat,ignore_index=True)
     return curpatdf
 
+def scrape_hospital_page(link,prov_name,hosp_name,logfile):
+    #爬取某医院下所有医生主页并返回
+    curdir = './%s/%s'%(prov_name,hosp_name)
+    if prov_name not in os.listdir(): os.mkdir('%s'%prov_name)
+    if hosp_name not in os.listdir('./%s/'%prov_name): os.mkdir('%s'%(prov_name+'/'+hosp_name))
+    if 'doctors.data' in os.listdir(curdir) and 'doctors_labels.data' in os.listdir(curdir):
+        print('Stored index data found in %s'%curdir,file=logfile)
+        with open(curdir+'/doctors.data','rb') as f:
+            doctors = pickle.load(f)
+        with open(curdir+'/doctors_labels.data','rb') as f:
+            doctors_labels = pickle.load(f)
+    else:
+        wc = WebContainer(link,dr,logfile)
+        sections = []
+        for i in wc.xpath('//table[@id="hosbra"]//a[@class="blue"]'):
+            sections.append((i.xpath('./text()').extract()[0],i.xpath('./@href').extract()[0]))
 
-if 'doctors.data' in os.listdir() and 'doctors_labels.data' in os.listdir():
-    with open('doctors.data','rb') as f:
-        doctors = pickle.load(f)
-    with open('doctors_labels.data','rb') as f:
-        doctors_labels = pickle.load(f)
-else:
-    #省人医页面
-    wc = WebContainer('http://www.haodf.com/hospital/DE4roiYGYZwX-bc2dcByMhc7g.htm',dr)
-    sections = []
-    for i in wc.xpath('//table[@id="hosbra"]//a[@class="blue"]'):
-        sections.append((i.xpath('./text()').extract()[0],i.xpath('./@href').extract()[0]))
-
-    doctors = []
-    doctors_labels = []
-    for i in sections:
-        try:
-            wc = WebContainer(i[1],dr)
-        except:
-            continue
-        all_pages = set(wc.xpath('//a[@class="p_num"][contains(@href,"_")]/@href').extract())
-        doctors_on_this_section = [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
-        for j in all_pages:
-            doctors_on_this_section += [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
-        doctors_labels.append(i[0])
-        doctors.append(doctors_on_this_section)
-
-
-
-
-#从每一个医生界面抓取信息
-patdf = DataFrame(columns=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost'])
-for lblix in range(len(doctors)):
-    for docix in range(len(doctors[lblix])):
-        while 1:
+        doctors = []
+        doctors_labels = []
+        for i in sections:
             try:
-                this_page = WebContainer(doctors[lblix][docix][1],dr)
-            except Exception as e:
-                print(e);continue
-            break 
-        a = this_page.xpath('//td[@class="center orange"]/a/@href').extract_first()
-        if a:
-            #handling all patient data
-            wc = WebContainer(a,dr)
-            a = wc.xpath('//td[@class="hdf_content"]/div[@class="p_bar"]/a[@class="p_num"]/@href').extract_first()
-            templatel = a.split('2.htm'); templatel[1]+='.htm'
-            if len(templatel)!=2: print('Error in handling adress: %s'%a);continue
-            curpagnum = 1
-            try:
-                totpagnum = int(wc.xpath('//a[@class="p_text"][@rel="true"]/text()').extract_first()[1:-1])
-            except Exception as e:
-                print('Error raised when finding all page numbers on page %s:\n\t%s'%(a,e))
+                wc = WebContainer(i[1],dr,logfile)
+            except:
                 continue
-            while curpagnum<=totpagnum:
-                if curpagnum not in [1,2]: wc = WebContainer(str(curpagnum).join(templatel),dr)
-                elif curpagnum == 1: wc = this_page
-                patdf = patdf.append(current_page_to_df(wc),ignore_index=True)
-                curpagnum += 1
-                
-        else:
-            patdf = patdf.append(current_page_to_df(this_page),ignore_index=True)
-log.close()
+            all_pages = set(wc.xpath('//a[@class="p_num"][contains(@href,"_")]/@href').extract())
+            doctors_on_this_section = [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
+            for j in all_pages:
+                doctors_on_this_section += [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
+            doctors_labels.append(i[0])
+            doctors.append(doctors_on_this_section)
+        
+        #stores all indexes
+        with open(curdir+'/doctors.data','wb') as f:
+            pickle.dump(doctors, f)
+        with open(curdir+'/doctors_labels.data','wb') as f:
+            pickle.dump(doctors_labels,f)
+        print('Index data stored in %s'%curdir,file=logfile)
+    return doctors,doctors_labels
+
+def scrape_doct_page(doctors,doctors_labels,logfile):
+    #从每一个医生主页抓取患者信息并返回
+    patdf = DataFrame(columns=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost'])
+    for lblix in range(len(doctors)):
+        for docix in range(len(doctors[lblix])):
+            while 1:
+                try:
+                    this_page = WebContainer(doctors[lblix][docix][1],dr,logfile)
+                except Exception as e:
+                    print(e);continue
+                break 
+            a = this_page.xpath('//td[@class="center orange"]/a/@href').extract_first()
+            if a:
+                #handling all patient data
+                wc = WebContainer(a,dr,logfile)
+                a = wc.xpath('//td[@class="hdf_content"]/div[@class="p_bar"]/a[@class="p_num"]/@href').extract_first()
+                templatel = a.split('2.htm'); templatel[1]+='.htm'
+                if len(templatel)!=2: print('Error in handling adress: %s'%a);continue
+                curpagnum = 1
+                try:
+                    totpagnum = int(wc.xpath('//a[@class="p_text"][@rel="true"]/text()').extract_first()[1:-1])
+                except Exception as e:
+                    print('Error raised when finding all page numbers on page %s:\n\t%s'%(a,e))
+                    continue
+                while curpagnum<=totpagnum:
+                    if curpagnum != 1: wc = WebContainer(str(curpagnum).join(templatel),dr,logfile)
+                    else: wc = this_page
+                    patdf = patdf.append(current_page_to_df(wc,logfile,lblix,docix),ignore_index=True)
+                    curpagnum += 1
+                    
+            else:
+                patdf = patdf.append(current_page_to_df(this_page,logfile,lblix,docix),ignore_index=True)
+    return patdf
+
+
+def get_all_hosp(link,prov_name,logfile):
+    #抓取所有本页面上医院清单并以n×2列表返回
+    if prov_name not in os.listdir(): os.mkdir('%s'%prov_name)
+    curdir = './'+prov_name
+    if 'hosp_list.data' in os.listdir(curdir):
+        with open(curdir+'/hosp_list.data','rb') as f:
+            l = pickle.load(f)
+    else:
+        wc = WebContainer(link,dr,logfile)
+        l = []
+        for i in wc.xpath('//li/a[@target="_blank"]'):
+            cn = i.xpath('./text()').extract_first()
+            cl = i.xpath('./@href').extract_first()
+            if cl[:4] != 'http': cl = 'http://www.haodf.com'+cl
+            if cn and cl: l.append((cn,cl))
+        with open(curdir+'/hosp_list.data','wb') as f:
+            pickle.dump(l,f)
+    return l
+
+
+def get_all_prov(logfile):
+    if 'all_prov.data' in os.listdir():
+        with open('all_prov.data','rb') as f:
+            l = pickle.load(f)
+    else:
+        wc = WebContainer('http://www.haodf.com/yiyuan/hebei/list.htm',dr,logfile)
+        l = []
+        for i in wc.xpath('//div[@class="kstl"]/a'):
+            cn = i.xpath('./text()').extract_first()
+            cl = i.xpath('./@href').extract_first()
+            if cn and cl: l.append((cn,cl))
+        with open('all_prov.data','wb') as f:
+            pickle.dump(l,f)
+    return l
+
