@@ -115,7 +115,6 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile):
         with open(curdir+'/doctors_labels.data','rb') as f:
             doctors_labels = pickle.load(f)
     else:
-        failed = True
         wc = WebContainer(link,dr,logfile)
         sections = []
         for i in wc.xpath('//table[@id="hosbra"]//a[@class="blue"]'):
@@ -125,9 +124,25 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile):
         doctors_labels = []
         for i in sections:
             wc = WebContainer(i[1],dr,logfile)
-            all_pages = set(wc.xpath('//a[@class="p_num"][contains(@href,"_")]/@href').extract())
+            try:
+                all_pages = range(1,int(wc.xpath('//a[@class="p_text"][@rel="true"]/text()').extract_first().strip()[1:-1])+1)
+            except AttributeError as e:
+                all_pages = [1]
+                doctors_on_this_section += [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
+                doctors_labels.append(i[0])
+                doctors.append(doctors_on_this_section)
+                continue
+            templatel = wc.xpath('//div[@class="p_bar"]/a[@class="p_num"]/@href').extract_first().split('2.htm')
+            try: 
+                templatel[1] = '.htm'+templatel[1]
+                if len(templatel) != 2: raise ValueError('Template Link list with more or less than 2 elements.')
+            except Exception as e:
+                print('Error raised when finding all page numbers on page %s:\n\t%s'%(a,e))
+                continue
             doctors_on_this_section = [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
             for j in all_pages:
+                j = str(j).join(templatel)
+                wc = WebContainer(j,dr,logfile)
                 doctors_on_this_section += [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
             doctors_labels.append(i[0])
             doctors.append(doctors_on_this_section)
@@ -154,9 +169,8 @@ def scrape_doct_page(doctors,doctors_labels,logfile):
             a = this_page.xpath('//td[@class="center orange"]/a/@href').extract_first()
             if a:
                 #handling all patient data
-                failed = True
                 wc = WebContainer(a,dr,logfile)
-                a = wc.xpath('//td[@class="hdf_content"]/div[@class="p_bar"]/a[@class="p_num"]/@href').extract_first()
+                a = wc.xpath('//div[@class="p_bar"]/a[@class="p_num"]/@href').extract_first()
                 templatel = a.split('2.htm'); templatel[1]+='.htm'
                 if len(templatel)!=2: print('Error in handling adress: %s'%a);continue
                 curpagnum = 1
@@ -204,7 +218,6 @@ def get_all_prov(logfile):
         with open('all_prov.data','rb') as f:
             l = pickle.load(f)
     else:
-        failed = True
         wc = WebContainer('http://www.haodf.com/yiyuan/hebei/list.htm',dr,logfile)
         l = []
         for i in wc.xpath('//div[@class="kstl"]/a'):
