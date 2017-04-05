@@ -115,7 +115,7 @@ def current_page_to_df(this_page,logfile,lblix,docix):
         curpatdf = curpatdf.append(curpat,ignore_index=True)
     return curpatdf
 
-def scrape_hospital_page(link,prov_name,hosp_name,logfile):
+def scrape_hospital_page(link,prov_name,hosp_name,logfile=sys.stdout):
     #爬取某医院下所有医生主页并返回
     # initial directory for storing data
     curdir = './%s/%s'%(prov_name,hosp_name)
@@ -175,7 +175,7 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile):
         print('Index data stored in %s'%curdir,file=logfile)
     return doctors,doctors_labels
 
-def scrape_doct_page(doctors,doctors_labels,logfile):
+def scrape_doct_page(doctors,doctors_labels,logfile=sys.stdout):
     #从每一个医生主页抓取患者信息并返回
     patdf = DataFrame(columns=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost'])
     for lblix in range(len(doctors)):
@@ -188,11 +188,12 @@ def scrape_doct_page(doctors,doctors_labels,logfile):
                 break 
             a = this_page.xpath('//td[@class="center orange"]/a/@href').extract_first()
             if a:
-                #handling all patient data
+                # handling all patient data
                 wc = WebContainer(a,dr,logfile)
                 a = wc.xpath('//div[@class="p_bar"]/a[@class="p_num"]/@href').extract_first()
                 templatel = a.split('2.htm'); templatel[1]+='.htm'
-                if len(templatel)!=2: print('Error in handling adress: %s'%a);continue
+                if len(templatel)!=2: print('Error in handling adress: %s.Skipping'%a,file=logfile);continue
+                ## get all page numbers
                 curpagnum = 1
                 try:
                     totpagnum = int(wc.xpath('//a[@class="p_text"][@rel="true"]/text()').extract_first()[1:-1])
@@ -200,6 +201,7 @@ def scrape_doct_page(doctors,doctors_labels,logfile):
                     print('Error raised when finding all page numbers on page %s:\n\t%s'%(a,e))
                     continue
                 while curpagnum<=totpagnum:
+                    ## scrape all pages
                     if curpagnum != 1: 
                         wc = WebContainer(str(curpagnum).join(templatel),dr,logfile)
                     else: wc = this_page
@@ -208,13 +210,15 @@ def scrape_doct_page(doctors,doctors_labels,logfile):
                     curpagnum += 1
                     
             else:
+                # only one page exists
                 resdf = current_page_to_df(this_page,logfile,lblix,docix)
                 if type(resdf) != type(None): patdf = patdf.append(resdf,ignore_index=True)
     return patdf
 
 
-def get_all_hosp(link,prov_name,logfile):
-    #抓取所有本页面上医院清单并以n×2列表返回
+def get_all_hosp(link,prov_name,logfile=sys.stdout):
+    # 抓取所有本页面上医院清单并以n×2列表返回
+    # read metadata if exists
     if prov_name not in os.listdir(): os.mkdir('%s'%prov_name)
     curdir = './'+prov_name
     if 'hosp_list.data' in os.listdir(curdir):
@@ -233,7 +237,7 @@ def get_all_hosp(link,prov_name,logfile):
     return l
 
 
-def get_all_prov(logfile):
+def get_all_prov(logfile=sys.stdout):
     if 'all_prov.data' in os.listdir():
         with open('all_prov.data','rb') as f:
             l = pickle.load(f)
