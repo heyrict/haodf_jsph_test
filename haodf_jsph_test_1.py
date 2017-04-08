@@ -11,6 +11,7 @@ from dateutil import parser
 # initial browser
 from selenium import webdriver
 from webcontainer import WebContainer
+from data_processing import *
 dr = webdriver.PhantomJS()
 dr.set_page_load_timeout(15)
 
@@ -163,14 +164,14 @@ def scrape_doct_page(doctors,doctors_labels,logfile=sys.stdout):
                 break 
             # get doctor's info
             curdoct = Series({'lblix':lblix,'docix':docix},index=['lblix','docix','hot','tot_sat_eff','tot_sat_att','tot_NoP','NoP_in_2weeks'])
-            thot = this_page.xpath('/div[@class="fl r-p-l"]/p[@class="r-p-l-score"]/text()').extract_first()
-            tscore = this_page.xpath('/div[@class="fl score-part"]//text()').extract()
+            curdoct['hot'] = this_page.xpath('//div[@class="fl r-p-l"]/p[@class="r-p-l-score"]/text()').extract_first()
+            tscore = [i.strip() for i in this_page.xpath('//div[@class="fl score-part"]//text()').extract() if i.strip()]
             for scl in tscore:
                 sclp = scl.split('：')
                 try:
                     curdoct[docsetnamspc[sclp[0]]] = int(split_wrd(sclp[1],'%',''))
                 except:
-                    print('Unable to transfer %s to int'%sclp[0])
+                    pass
 
             # check if there is multiple pages of patients' comments
             a = this_page.xpath('//td[@class="center orange"]/a/@href').extract_first()
@@ -202,7 +203,9 @@ def scrape_doct_page(doctors,doctors_labels,logfile=sys.stdout):
                 # only one page exists
                 resdf = current_page_to_df(this_page,logfile,lblix,docix)
                 if type(resdf) != type(None): patdf = patdf.append(resdf,ignore_index=True)
-    return curdoct, patdf
+
+            doctdf = doctdf.append(curdoct,ignore_index=True)
+    return doctdf, patdf
 
 
 def get_all_hosp(link,prov_name,logfile=sys.stdout):
