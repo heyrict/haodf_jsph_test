@@ -20,16 +20,15 @@ for prov in all_prov:
             doctors,doctors_labels = scrape_hospital_page(hosp[1],prov[0],hosp[0],logfile)
             doct_data = pd.DataFrame(columns=['docix','lblix','doct_name','lblname'])
             for i, j in zip(doctors,range(len(doctors_labels))):
-                t = pd.DataFrame(np.array(i)[0],columns=['doct_name'])
+                t = pd.DataFrame(np.array(i).T[0],columns=['doct_name'])
                 t['docix'] = range(len(t))
                 t['lblix'] = j
                 t['lblname'] = doctors_labels[j]
-                doct_data.append(t)
-            doct_data.to_csv('%s/%s/doct_data.csv'%(prov[0],hosp[0]),index=False)
+                doct_data = doct_data.append(t)
             curdoct, patdf = scrape_doct_page(doctors,doctors_labels,logfile)
             patdf.to_csv('%s/%s/pat_data.csv'%(prov[0],hosp[0]),index=False)
             doct_data.merge(curdoct).to_csv('%s/%s/doct_data.csv'%(prov[0],hosp[0]),index=False)
-            print('-----End Scraping hosp %d at %s-----'%(hosp[0],datetime.today().strftime(r'%Y-%m-%d %H:%M')),file=logfile)
+            print('-----End Scraping hosp %s at %s-----'%(hosp[0],datetime.today().strftime(r'%Y-%m-%d %H:%M')),file=logfile)
         else:
             print('%s.csv found in %s/. Skipping...'%(hosp[0],prov[0]))
 
