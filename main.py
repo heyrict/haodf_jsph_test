@@ -6,19 +6,29 @@ while 1:
     else: print('Cannot recognize input. Check if you entered [l(ogfile)/s(tdout)]')
 print('\n----------\nlog start: %s\n----------'%datetime.today().strftime(r'%Y-%m-%d %H:%M'),file=logfile)
 
-#all_prev: n*2 list
+#all_prov: n*2 list
 all_prov = get_all_prov(logfile)
 
 for prov in all_prov:
     all_hosp = get_all_hosp(prov[1],prov[0],logfile)
 
     for hosp in all_hosp:
-        doctors,doctors_labels = scrape_hospital_page(hosp[1],prov[0],hosp[0],logfile)
-        
         if '%s'%prov[0] not in os.listdir(): os.mkdir(prov[0])
         if '%s'%(hosp[0]) not in os.listdir(prov[0]): os.mkdir('%s/%s'%(prov[0],hosp[0]))
         if hosp[0]+'.csv' not in os.listdir(prov[0]):
-            scrape_doct_page(doctors,doctors_labels,logfile).to_csv('%s/%s.csv'%(prov[0],hosp[0]),index=False)
+
+            doctors,doctors_labels = scrape_hospital_page(hosp[1],prov[0],hosp[0],logfile)
+            doct_data = pd.DataFrame(columns=['docix','lblix','doct_name','lblname'])
+            for i, j in zip(doctors,range(len(doctors_labels))):
+                t = pd.DataFrame(np.array(i)[0],columns=['doct_name'])
+                t['docix'] = range(len(t))
+                t['lblix'] = j
+                t['lblname'] = doctors_labels[j]
+                doct_data.append(t)
+            doct_data.to_csv('%s/%s/doct_data.csv'%(prov[0],hosp[0]),index=False)
+            curdoct, patdf = scrape_doct_page(doctors,doctors_labels,logfile)
+            patdf.to_csv('%s/%s/pat_data.csv'%(prov[0],hosp[0]),index=False)
+            doct_data.merge(curdoct).to_csv('%s/%s/doct_data.csv'%(prov[0],hosp[0]),index=False)
             print('-----End Scraping hosp %d at %s-----'%(hosp[0],datetime.today().strftime(r'%Y-%m-%d %H:%M')),file=logfile)
         else:
             print('%s.csv found in %s/. Skipping...'%(hosp[0],prov[0]))

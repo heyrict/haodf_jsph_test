@@ -1,8 +1,5 @@
 # coding: utf-8
 ## import necessary packages
-### web-climbing libraries
-from selenium import webdriver
-from scrapy import Selector
 ### modules for storing data
 import pickle, os, sys
 import pandas as pd, numpy as np
@@ -12,37 +9,11 @@ from datetime import datetime
 from dateutil import parser
 
 # initial browser
-
+from selenium import webdriver
+from webcontainer import WebContainer
 dr = webdriver.PhantomJS()
 dr.set_page_load_timeout(15)
 
-# get web-climbing libraries wrapped
-
-class WebContainer(object):
-    def __init__(self,link,PhantomJSDriver=None,logfile=sys.stdout):
-        if PhantomJSDriver: self.dr = PhantomJSDriver
-        else: self.dr = webdriver.PhantomJS()
-        try:
-            print('Now scraping %s'%link)
-            while(1):
-                try: self.dr.get(link);break
-                except Exception as e:
-                    print('Exception raised:',end='')
-                    print(e)
-                    print('Trying to rescrape...')
-            self.contents = Selector(text=self.dr.page_source)
-            print('Succeeded in scraping %s'%link,file=logfile)
-        except Exception as e:
-            print('Failed to scrap %s'%link)
-            print(e)
-            print('Failed to scrap %s'%link,file=logfile)
-
-    ## maybe add css version of find() later
-    def find(self,expression,kind='xpath'):
-        return self.contents.xpath(expression)
-
-    def xpath(self,expression):
-        return self.find(expression,kind='xpath')
 
 # global variables for labeling data
 
@@ -58,6 +29,8 @@ reservation = {'网络预约':3,'排队挂号':2,'其他':1,'未填':0}
 status = {'有好转':3,'其他':1,'未见好转':2,'痊愈':4,'未填':0}
 ##名称匹配
 namspc = {'看病目的':'aim','疗效':'sat_eff','态度':'sat_att','选择该医生就诊的理由':'reason','本次挂号途径':'reservation','目前病情状态':'status','本次看病费用总计':'cost'}
+##名称匹配
+docsetnamspc = {'疗效满意度':'tot_sat_eff','态度满意度':'tot_sat_att','累计帮助患者数':'tot_NoP','近两周帮助患者数':'NoP_in_2weeks'}
 
 def current_page_to_df(this_page,logfile,lblix,docix):
     #从医生主页抓取所有患者信息
@@ -159,7 +132,7 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile=sys.stdout):
                 print('Error raised when finding all page numbers on page %s:\n\t%s'%(a,e))
                 continue
 
-            ### fine all pages
+            ### find all pages
             for j in all_pages:
                 j = str(j).join(templatel)
                 wc = WebContainer(j,dr,logfile)
@@ -178,15 +151,31 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile=sys.stdout):
 def scrape_doct_page(doctors,doctors_labels,logfile=sys.stdout):
     #从每一个医生主页抓取患者信息并返回
     patdf = DataFrame(columns=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost'])
+    doctdf = DataFrame(columns=['lblix','docix','hot','tot_sat_eff','tot_sat_att','tot_NoP','NoP_in_2weeks'])
     for lblix in range(len(doctors)):
         for docix in range(len(doctors[lblix])):
+            # scrape the current page
             while 1:
                 try:
                     this_page = WebContainer(doctors[lblix][docix][1],dr,logfile)
                 except Exception as e:
                     print(e);continue
                 break 
+            # get doctor's info
+            curdoct = Series({'lblix':lblix,'docix':docix},index=['lblix','docix','hot','tot_sat_eff','tot_sat_att','tot_NoP','NoP_in_2weeks'])
+            thot = this_page.xpath('/div[@class="fl r-p-l"]/p[@class="r-p-l-score"]/text()').extract_first()
+            tscore = this_page.xpath('/div[@class="fl score-part"]//text()').extract()
+            for scl in tscore:
+                sclp = scl.split('：')
+                try:
+                    curdoct[docsetnamspc[sclp[0]]] = int(split_wrd(sclp[1],'%',''))
+                except:
+                    print('Unable to transfer %s to int'%sclp[0])
+
+            # check if there is multiple pages of patients' comments
             a = this_page.xpath('//td[@class="center orange"]/a/@href').extract_first()
+
+            # if multiple pages exists
             if a:
                 # handling all patient data
                 wc = WebContainer(a,dr,logfile)
@@ -213,7 +202,7 @@ def scrape_doct_page(doctors,doctors_labels,logfile=sys.stdout):
                 # only one page exists
                 resdf = current_page_to_df(this_page,logfile,lblix,docix)
                 if type(resdf) != type(None): patdf = patdf.append(resdf,ignore_index=True)
-    return patdf
+    return curdoct, patdf
 
 
 def get_all_hosp(link,prov_name,logfile=sys.stdout):
