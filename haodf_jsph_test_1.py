@@ -101,10 +101,10 @@ def current_page_to_df(this_page,logfile,lblix,docix):
     #从医生主页抓取所有患者信息
     if type(this_page)==type(None): return
     global sat_att, sat_eff, aim, reason, reservation, status, namspc, temp
-    curpatdf = DataFrame(columns=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost','illness'])
+    curpatdf = DataFrame(columns=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost','illness','patnam'])
     
     for pat in this_page.xpath('//table[@class="doctorjy"]'):
-        curpat = pd.Series({'lblix':lblix,'docix':docix},index=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost','illness'])
+        curpat = pd.Series({'lblix':lblix,'docix':docix},index=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost','illness','patnam'])
         #Time Processing
         t = pat.xpath('.//td[contains(@style,"text-align:right;")]/text()').extract_first()
         try: t = parser.parse(t[3:]).strftime(r'%Y-%m-%d')
@@ -136,13 +136,14 @@ def current_page_to_df(this_page,logfile,lblix,docix):
             if t[0] in namspc.keys(): 
                 curaim = [eval(namspc[t[0]])[i] if i in eval(namspc[t[0]]) else 1 for i in t[1].split('、')] 
                 curpat[namspc[t[0]]] = str(curaim)
-            elif t[0] == '患者':
-                if re.findall('\*\*\*$',t[1]):
-                    curpat['patnam'] = t[1][0]
-                elif re.findall('\.\*',t[1]):
-                    curpat['patnam'] = t[1].split('(')[0]
-                else:
-                    curpat['patnam'] = np.nan
+        t = patbriefinfo.xpath('.//td[@colspan="2"]/text()').extract_first().split('：')
+        if t[0] == '患者':
+            if re.findall('\*\*\*',t[1]):
+                curpat['patnam'] = t[1][0]
+            elif re.findall('\.\*',t[1]):
+                curpat['patnam'] = t[1].split('(')[0]
+            else:
+                curpat['patnam'] = np.nan
 
         ##satisfaction
         t = patbriefinfo.xpath('./table/tbody/tr')[-1].xpath('./td')
