@@ -1,7 +1,7 @@
 # coding: utf-8
 ## import necessary packages
 ### modules for storing data
-import pickle, os, sys
+import pickle, os, sys, re
 import pandas as pd, numpy as np
 from pandas import DataFrame, Series
 ### time processing
@@ -87,12 +87,17 @@ namspc = {'看病目的':'aim','疗效':'sat_eff','态度':'sat_att','选择该�
 docsetnamspc = {'疗效满意度':'tot_sat_eff','态度满意度':'tot_sat_att','累计帮助患者数':'tot_NoP','近两周帮助患者数':'NoP_in_2weeks'}
 
 illnessix = get_illness()
+# illness_ix = '1%02d%03d%03d' % (section,subsection,illness_name)
+if 'illness_add_dict.csv' not in os.listdir('index_data'):
+    illness_add_dict = pd.DataFrame(columns=['illness_ix','illness_link'])
+else:
+    illness_add_dict =  pd.read_csv('index_data/illness_add_dict.csv') 
 
-        
 
 def current_page_to_df(this_page,logfile,lblix,docix):
     # fetch dictionary of all illness
     global illnessix
+    global illness_add_dict
     #从医生主页抓取所有患者信息
     if type(this_page)==type(None): return
     global sat_att, sat_eff, aim, reason, reservation, status, namspc, temp
@@ -110,19 +115,34 @@ def current_page_to_df(this_page,logfile,lblix,docix):
         patbriefinfo = pat.xpath('.//td[@class="dlemd"]')
         ## illness
         try:
-            tempilns = patbriefinfo.xpath('//td[@colspan="3"]/a[@class="orange"]/@href').extract_first().strip()
-            curpat['illness'] = illnessix[tempilns] if tempilns else np.nan
-        except Exception as e:
-            curpat['illness'] = patbriefinfo.xpath('//td[@colspan="3"]/a[@class="orange"]/@href').extract_first()
-            print('Info: illness %s not found in database'%curpat['illness'],file=logfile)
+            tempilns = patbriefinfo.xpath('.//td[@colspan="3"]//@href').extract_first()
+            tempilns = tempilns.strip() if tempilns else None
+            if not tempilns: pass
+            elif tempilns in illnessix:
+                curpat['illness'] = illnessix[tempilns] 
+            elif tempilns in illness_add_dict['illness_link'].unique():
+                curpat['illness'] = illness_add_dict[illness_add_dict['illness_link']==tempilns]['illness_ix'][0]
+            elif re.findall('.htm',tempilns):
+                curpat['illness'] = len(illness_add_dict)+100000000
+                illness_add_dict = illness_add_dict.append({'illness_link':tempilns,'illness_ix':len(illness_add_dict)+100000000},ignore_index=True)
+                illness_add_dict.to_csv('index_data/illness_add_dict.csv',index=False) 
+            else:
+                print('Info: illness %s not found in database'%curpat['illness'],file=logfile)
+        except Exception as e: print(e)
+
         ## aim
         for i in patbriefinfo.xpath('.//td[@colspan="3"]/span/text()').extract():
             t = i.split('：')
             if t[0] in namspc.keys(): 
                 curaim = [eval(namspc[t[0]])[i] if i in eval(namspc[t[0]]) else 1 for i in t[1].split('、')] 
                 curpat[namspc[t[0]]] = str(curaim)
-
-        curpat['illnessdesc'] = patbriefinfo.xpath('//td[@colspan="3"]/a[@class="orange"]/text()').extract_first()
+            elif t[0] == '患者':
+                if re.findall('\*\*\*$',t[1]):
+                    curpat['patnam'] = t[1][0]
+                elif re.findall('\.\*',t[1]):
+                    curpat['patnam'] = t[1].split('(')[0]
+                else:
+                    curpat['patnam'] = np.nan
 
         ##satisfaction
         t = patbriefinfo.xpath('./table/tbody/tr')[-1].xpath('./td')
