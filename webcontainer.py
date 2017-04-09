@@ -2,7 +2,7 @@ from selenium import webdriver
 from scrapy import Selector
 import sys,os
 class WebContainer(object):
-    def __init__(self,link,PhantomJSDriver=None,logfile=sys.stdout):
+    def __init__(self,link,PhantomJSDriver=None,logfile=sys.stdout,timeout=15):
         if PhantomJSDriver: self.dr = PhantomJSDriver
         else: self.dr = webdriver.PhantomJS();self.dr.set_page_load_timeout(timeout)
         try:
