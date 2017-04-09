@@ -33,7 +33,54 @@ namspc = {'看病目的':'aim','疗效':'sat_eff','态度':'sat_att','选择该�
 ##名称匹配
 docsetnamspc = {'疗效满意度':'tot_sat_eff','态度满意度':'tot_sat_att','累计帮助患者数':'tot_NoP','近两周帮助患者数':'NoP_in_2weeks'}
 
+def true_link(lnk):
+    if type(lnk) == str:
+        f = lnk[0]
+        if lnk[:4] == 'http': return lnk
+        elif f == '/': return 'http://www.haodf.com' + lnk
+    
+    else:
+        return [true_link(i) for i in lnk]
+
+def get_illness(logfile=sys.stdout):
+    # returns dict of (illness_ix, illness_link)
+    ## illness_ix = '%02d%03d%03d' % (section,subsection,illness_name)
+    ## check if local data exists
+    if 'index_data' not in os.listdir(): os.mkdir('index_data')
+    if 'illness_dict.csv' in os.listdir('index_data'):
+        print('illness_dict.csv found. Skipping...',file=logfile)
+        illness_dict = pd.read_csv('index_data/illness_dict.csv')
+    else:
+        illness_dict = pd.DataFrame(columns=['illness_ix','illness_name','illness_link'])
+        subsection_dict = pd.DataFrame(columns=['section_ix','subsection_ix','subsection_name'])
+        ## get all sections
+        sections = WebContainer('http://www.haodf.com/jibing/erkezonghe/list.htm',dr,logfile).xpath('//div[@class="ksbd"]//a')
+        section_df = pd.DataFrame(np.array([sections.xpath('./@href').extract(),sections.xpath('./text()').extract()]).T,columns=['section_link','section_name'])
+        section_df['section_ix'] = np.arange(len(section_df))
+        for i in range(len(section_df)):
+            subsections = WebContainer(true_link(section_df.ix[i,'section_link']),dr,logfile).xpath('//div[@class="ksbd"]//a')
+            subsection_df = pd.DataFrame(np.array([sections.xpath('./@href').extract(),sections.xpath('./text()').extract()]).T,columns=['subsection_link','subsection_name'])
+            subsection_df['subsection_ix'] = np.arange(len(subsection_df))
+            subsection_df['section_ix'] = section_df.ix[i,'section_ix']
+            subsection_dict.append(subsection_df[['section_ix','subsection_ix','subsection_name']],ignore_index=True)
+            for j in range(len(subsection_df)):
+                illness = WebContainer(true_link(subsection_df.ix[j,'subsection_link']),dr,logfile).xpath('//div[@class="m_ctt_green"]//a')
+                illness_df = pd.DataFrame(np.array([illness.xpath('./@href').extract(),illness.xpath('./text()').extract()]).T,columns=['illness_link','illness_name'])
+                illness_df['illness_ix'] = np.arange(len(illness_df))
+                illness_df['illness_ix'] = illness_df['illness_ix'].map(lambda x: "%02d%03d%03d"%(section_df.ix[i,'section_ix'],subsection_df.ix[j,'subsection_ix'],x))
+                illness_dict = illness_dict.append(illness_df,ignore_index=True)
+
+        illness_dict.to_csv('index_data/illness_dict.csv',index=False)
+        print('illness_dict stored in ./index_data/',file=logfile)
+        subsection_dict.to_csv('index_data/subsection_dict.csv',index=False)
+        print('subsection_dict stored in ./index_data/',file=logfile)
+    return dict(illness_dict[['illness_ix','illness_link']].values)
+        
+
+
 def current_page_to_df(this_page,logfile,lblix,docix):
+    # fetch dictionary of all illness
+    illnessix = flip_dict_full(get_illness(logfile))
     #从医生主页抓取所有患者信息
     if type(this_page)==type(None): return
     global sat_att, sat_eff, aim, reason, reservation, status, namspc, temp
@@ -55,6 +102,9 @@ def current_page_to_df(this_page,logfile,lblix,docix):
             if t[0] in namspc.keys(): 
                 curaim = [eval(namspc[t[0]])[i] if i in eval(namspc[t[0]]) else 1 for i in t[1].split('、')] 
                 curpat[namspc[t[0]]] = str(curaim)
+
+        curpat['illness'] = illnessix[patbriefinfo.xpath('//td[@colspan="3"]/a[@class="orange"]/@href').extract_first()]
+        curpat['illnessdesc'] = patbriefinfo.xpath('//td[@colspan="3"]/a[@class="orange"]/text()').extract_first()
 
         ##satisfaction
         t = patbriefinfo.xpath('./table/tbody/tr')[-1].xpath('./td')
