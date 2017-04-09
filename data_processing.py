@@ -11,3 +11,11 @@ def split_wrd(string,sep=None,rep=''):
             string = j.join(string.split(i))
         return string
     
+def flip_dict_full(dict_to_flip):
+    t = [i[::-1] for i in dict_to_flip.items()]
+    tp = dict()
+    for i in t:
+        if i[0] in tp:
+            tp[i[0]] = tp[i[0]] + [i[1]] if type(tp[i[0]])==list else [tp[i[0]]] + [i[1]]
+        else: tp[i[0]] = [i[1]]
+    return tp

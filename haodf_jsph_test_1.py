@@ -18,21 +18,6 @@ dr.set_page_load_timeout(15)
 
 # global variables for labeling data
 
-##疗效及态度满意度
-sat_att = sat_eff = {'很不满意':2,'不满意':3,'一般':4,'满意':5,'很满意':6,'其他':0,'还不知道':1}
-##看病目的
-aim = {'治疗':3,'未填':0,'诊断':2,'其他':1,'咨询问题':4}
-##选择该医生的理由
-reason = {'网上评价':3,'医生推荐':2,'其他':1,'未填':0,'熟人推荐':4,}
-##本次挂号途径
-reservation = {'网络预约':3,'排队挂号':2,'其他':1,'未填':0}
-##目前病情状态
-status = {'有好转':3,'其他':1,'未见好转':2,'痊愈':4,'未填':0}
-##名称匹配
-namspc = {'看病目的':'aim','疗效':'sat_eff','态度':'sat_att','选择该医生就诊的理由':'reason','本次挂号途径':'reservation','目前病情状态':'status','本次看病费用总计':'cost'}
-##名称匹配
-docsetnamspc = {'疗效满意度':'tot_sat_eff','态度满意度':'tot_sat_att','累计帮助患者数':'tot_NoP','近两周帮助患者数':'NoP_in_2weeks'}
-
 def true_link(lnk):
     if type(lnk) == str:
         f = lnk[0]
@@ -47,9 +32,9 @@ def get_illness(logfile=sys.stdout):
     ## illness_ix = '%02d%03d%03d' % (section,subsection,illness_name)
     ## check if local data exists
     if 'index_data' not in os.listdir(): os.mkdir('index_data')
-    if 'illness_dict.csv' in os.listdir('index_data'):
+    if 'illness_dict_flipped.csv' in os.listdir('index_data'):
+        illness_dict_flipped = pd.read_csv('index_data/illness_dict_flipped.csv')
         print('illness_dict.csv found. Skipping...',file=logfile)
-        illness_dict = pd.read_csv('index_data/illness_dict.csv')
     else:
         illness_dict = pd.DataFrame(columns=['illness_ix','illness_name','illness_link'])
         subsection_dict = pd.DataFrame(columns=['section_ix','subsection_ix','subsection_name'])
@@ -73,21 +58,48 @@ def get_illness(logfile=sys.stdout):
         section_df[['section_ix','section_name']].to_csv('index_data/section_dict.csv',index=False)
         illness_dict.to_csv('index_data/illness_dict.csv',index=False)
         print('illness_dict stored in ./index_data/',file=logfile)
+
+        illness_dict_flipped = pd.DataFrame(pd.Series(flip_dict_full(dict(illness_dict[['illness_ix','illness_link']].values)),name='illness_ixs')).reset_index()
+        illness_dict_flipped.rename_axis({'index':'illness_link'},axis=1,inplace=True)
+        illness_dict_flipped['illness_ix_flipped'] = np.arange(len(illness_dict_flipped))
+        illness_dict_flipped[['illness_ix_flipped','illness_link','illness_ixs']].to_csv('index_data/illness_dict_flipped.csv',index=False)
+        print('illness_dict_flipped stored in ./index_data/',file=logfile)
+        
         subsection_dict.to_csv('index_data/subsection_dict.csv',index=False)
         print('subsection_dict stored in ./index_data/',file=logfile)
-    return dict(illness_dict[['illness_ix','illness_link']].values)
+
+    illness_dict_flipped['illness_link'] = illness_dict_flipped['illness_link'].map(true_link) 
+    return dict(illness_dict_flipped[['illness_link','illness_ix_flipped']].values)
+
+##疗效及态度满意度
+sat_att = sat_eff = {'很不满意':2,'不满意':3,'一般':4,'满意':5,'很满意':6,'其他':0,'还不知道':1}
+##看病目的
+aim = {'治疗':3,'未填':0,'诊断':2,'其他':1,'咨询问题':4}
+##选择该医生的理由
+reason = {'网上评价':3,'医生推荐':2,'其他':1,'未填':0,'熟人推荐':4,}
+##本次挂号途径
+reservation = {'网络预约':3,'排队挂号':2,'其他':1,'未填':0}
+##目前病情状态
+status = {'有好转':3,'其他':1,'未见好转':2,'痊愈':4,'未填':0}
+##名称匹配
+namspc = {'看病目的':'aim','疗效':'sat_eff','态度':'sat_att','选择该医生就诊的理由':'reason','本次挂号途径':'reservation','目前病情状态':'status','本次看病费用总计':'cost'}
+##名称匹配
+docsetnamspc = {'疗效满意度':'tot_sat_eff','态度满意度':'tot_sat_att','累计帮助患者数':'tot_NoP','近两周帮助患者数':'NoP_in_2weeks'}
+
+illnessix = get_illness()
+
         
 
 def current_page_to_df(this_page,logfile,lblix,docix):
     # fetch dictionary of all illness
-    illnessix = flip_dict_full(get_illness(logfile))
+    global illnessix
     #从医生主页抓取所有患者信息
     if type(this_page)==type(None): return
     global sat_att, sat_eff, aim, reason, reservation, status, namspc, temp
-    curpatdf = DataFrame(columns=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost'])
+    curpatdf = DataFrame(columns=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost','illness'])
     
     for pat in this_page.xpath('//table[@class="doctorjy"]'):
-        curpat = pd.Series({'lblix':lblix,'docix':docix},index=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost'])
+        curpat = pd.Series({'lblix':lblix,'docix':docix},index=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost','illness'])
         #Time Processing
         t = pat.xpath('.//td[contains(@style,"text-align:right;")]/text()').extract_first()
         try: t = parser.parse(t[3:]).strftime(r'%Y-%m-%d')
@@ -97,6 +109,12 @@ def current_page_to_df(this_page,logfile,lblix,docix):
         #dlemd Processing
         patbriefinfo = pat.xpath('.//td[@class="dlemd"]')
         ## illness
+        try:
+            tempilns = patbriefinfo.xpath('//td[@colspan="3"]/a[@class="orange"]/@href').extract_first().strip()
+            curpat['illness'] = illnessix[tempilns] if tempilns else np.nan
+        except Exception as e:
+            curpat['illness'] = patbriefinfo.xpath('//td[@colspan="3"]/a[@class="orange"]/@href').extract_first()
+            print('Info: illness %s not found in database'%curpat['illness'],file=logfile)
         ## aim
         for i in patbriefinfo.xpath('.//td[@colspan="3"]/span/text()').extract():
             t = i.split('：')
@@ -104,7 +122,6 @@ def current_page_to_df(this_page,logfile,lblix,docix):
                 curaim = [eval(namspc[t[0]])[i] if i in eval(namspc[t[0]]) else 1 for i in t[1].split('、')] 
                 curpat[namspc[t[0]]] = str(curaim)
 
-        curpat['illness'] = illnessix[patbriefinfo.xpath('//td[@colspan="3"]/a[@class="orange"]/@href').extract_first()]
         curpat['illnessdesc'] = patbriefinfo.xpath('//td[@colspan="3"]/a[@class="orange"]/text()').extract_first()
 
         ##satisfaction
