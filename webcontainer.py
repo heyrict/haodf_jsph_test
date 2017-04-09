@@ -14,7 +14,6 @@ class WebContainer(object):
                     print(e)
                     print('Trying to rescrape...')
             self.contents = Selector(text=self.dr.page_source)
-            print('Succeeded in scraping %s'%link,file=logfile)
         except Exception as e:
             print('Failed to scrap %s'%link)
             print(e)
