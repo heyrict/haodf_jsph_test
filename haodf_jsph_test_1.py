@@ -15,10 +15,13 @@ from data_processing import *
 dr = webdriver.PhantomJS()
 dr.set_page_load_timeout(15)
 
-
+count = 0
+totcount = 30
+gdr = None
 # global variables for labeling data
 
 def true_link(lnk):
+    global count,totcount,gdr
     if type(lnk) == str:
         f = lnk[0]
         if lnk[:4] == 'http': return lnk
@@ -28,6 +31,7 @@ def true_link(lnk):
         return [true_link(i) for i in lnk]
 
 def get_illness(logfile=sys.stdout):
+    global count,totcount,gdr
     # returns dict of (illness_ix, illness_link)
     ## illness_ix = '%02d%03d%03d' % (section,subsection,illness_name)
     ## check if local data exists
@@ -43,13 +47,27 @@ def get_illness(logfile=sys.stdout):
         section_df = pd.DataFrame(np.array([sections.xpath('./@href').extract(),sections.xpath('./text()').extract()]).T,columns=['section_link','section_name'])
         section_df['section_ix'] = np.arange(len(section_df))
         for i in range(len(section_df)):
-            subsections = WebContainer(true_link(section_df.ix[i,'section_link']),logfile).xpath('//div[@class="ksbd"]//a')
+            if count > totcount:
+                count = 0
+                subsections = WebContainer(true_link(section_df.ix[i,'section_link']),logfile).xpath('//div[@class="ksbd"]//a')
+                if gdr != None: gdr.quit()
+                gdr = subsections.dr
+            else:
+                count = 1
+                subsections = WebContainer(true_link(section_df.ix[i,'section_link']),logfile).xpath('//div[@class="ksbd"]//a',dr=gdr)
             subsection_df = pd.DataFrame(np.array([subsections.xpath('./@href').extract(),subsections.xpath('./text()').extract()]).T,columns=['subsection_link','subsection_name'])
             subsection_df['subsection_ix'] = np.arange(len(subsection_df))
             subsection_df['section_ix'] = section_df.ix[i,'section_ix']
             subsection_dict = subsection_dict.append(subsection_df[['section_ix','subsection_ix','subsection_name']],ignore_index=True)
             for j in range(len(subsection_df)):
-                illness = WebContainer(true_link(subsection_df.ix[j,'subsection_link']),logfile).xpath('//div[@class="m_ctt_green"]//a')
+                if count > totcount:
+                    count = 0
+                    illness = WebContainer(true_link(subsection_df.ix[j,'subsection_link']),logfile).xpath('//div[@class="m_ctt_green"]//a')
+                    if gdr!=None: gdr.quit()
+                    gdr = illness.dr
+                else:
+                    count = 1
+                    illness = WebContainer(true_link(subsection_df.ix[j,'subsection_link']),logfile).xpath('//div[@class="m_ctt_green"]//a',dr=gdr)
                 illness_df = pd.DataFrame(np.array([illness.xpath('./@href').extract(),illness.xpath('./text()').extract()]).T,columns=['illness_link','illness_name'])
                 illness_df['illness_ix'] = np.arange(len(illness_df))
                 illness_df['illness_ix'] = illness_df['illness_ix'].map(lambda x: "%02d%03d%03d"%(section_df.ix[i,'section_ix'],subsection_df.ix[j,'subsection_ix'],x))
@@ -95,6 +113,7 @@ else:
 
 
 def current_page_to_df(this_page,logfile,lblix,docix):
+    global count,totcount,gdr
     # fetch dictionary of all illness
     global illnessix
     global illness_add_dict
@@ -179,6 +198,7 @@ def current_page_to_df(this_page,logfile,lblix,docix):
     return curpatdf
 
 def scrape_hospital_page(link,prov_name,hosp_name,logfile=sys.stdout):
+    global count,totcount,gdr
     #爬取某医院下所有医生主页并返回
     # initial directory for storing data
     curdir = './%s/%s'%(prov_name,hosp_name)
@@ -193,7 +213,14 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile=sys.stdout):
             doctors_labels = pickle.load(f)
     else:
         # if stored data not found
-        wc = WebContainer(link,logfile)
+        if count > totcount:
+            count = 0
+            wc = WebContainer(link,logfile)
+            if gdr!=None: gdr.quit()
+            gdr = wc.dr
+        else:
+            count += 1
+            wc = WebContainer(link,logfile,dr=gdr)
         ## get all sections
         sections = []
         for i in wc.xpath('//table[@id="hosbra"]//a[@class="blue"]'):
@@ -203,7 +230,14 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile=sys.stdout):
         doctors = []
         doctors_labels = []
         for i in sections:
-            wc = WebContainer(i[1],logfile)
+            if count > totcount:
+                count = 0
+                wc = WebContainer(i[1],logfile)
+                if gdr!=None: gdr.quit()
+                gdr = wc.dr
+            else:
+                count += 1
+                wc = WebContainer(i[1],logfile,dr=gdr)
             if wc.isempty: continue
             doctors_on_this_section = [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
             try:
@@ -226,7 +260,14 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile=sys.stdout):
             ### find all pages
             for j in all_pages:
                 j = str(j).join(templatel)
-                wc = WebContainer(j,logfile)
+                if count > totcount:
+                    count = 0
+                    wc = WebContainer(j,logfile)
+                    if gdr!=None: gdr.quit()
+                    gdr = wc.dr
+                else:
+                    count += 1
+                    wc = WebContainer(j,logfile,dr=gdr)
                 if wc.isempty: continue
                 doctors_on_this_section += [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
             doctors_labels.append(i[0])
@@ -241,13 +282,21 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile=sys.stdout):
     return doctors,doctors_labels
 
 def scrape_doct_page(doctors,doctors_labels,logfile=sys.stdout):
+    global count,totcount,gdr
     #从每一个医生主页抓取患者信息并返回
     patdf = DataFrame(columns=['lblix','docix','time','aim','reason','sat_eff','sat_att','reservation','status','cost'])
     doctdf = DataFrame(columns=['lblix','docix','hot','tot_sat_eff','tot_sat_att','tot_NoP','NoP_in_2weeks'])
     for lblix in range(len(doctors)):
         for docix in range(len(doctors[lblix])):
             # scrape the current page
-            this_page = WebContainer(doctors[lblix][docix][1],logfile)
+            if count > totcount:
+                count = 0
+                this_page = WebContainer(doctors[lblix][docix][1],logfile)
+                if gdr!=None: gdr.quit()
+                gdr = this_page.dr
+            else:
+                count += 1
+                this_page = WebContainer(doctors[lblix][docix][1],logfile,dr=gdr)
             if this_page.isempty: continue
             # get doctor's info
             curdoct = Series({'lblix':lblix,'docix':docix},index=['lblix','docix','hot','tot_sat_eff','tot_sat_att','tot_NoP','NoP_in_2weeks'])
@@ -266,7 +315,14 @@ def scrape_doct_page(doctors,doctors_labels,logfile=sys.stdout):
             # if multiple pages exists
             if a:
                 # handling all patient data
-                wc = WebContainer(a,logfile)
+                if count > totcount:
+                    count = 0
+                    wc = WebContainer(a,logfile)
+                    if gdr!=None: gdr.quit()
+                    gdr = wc.dr
+                else:
+                    count += 1
+                    wc = WebContainer(a,logfile,dr=gdr)
                 if wc.isempty: continue
                 a = wc.xpath('//div[@class="p_bar"]/a[@class="p_num"]/@href').extract_first()
                 templatel = a.split('2.htm'); templatel[1]+='.htm'
@@ -281,7 +337,14 @@ def scrape_doct_page(doctors,doctors_labels,logfile=sys.stdout):
                 while curpagnum<=totpagnum:
                     ## scrape all pages
                     if curpagnum != 1: 
-                        wc = WebContainer(str(curpagnum).join(templatel),logfile)
+                        if count > totcount:
+                            count = 0
+                            wc = WebContainer(str(curpagnum).join(templatel),logfile)
+                            if gdr!=None: gdr.quit()
+                            gdr = wc.dr
+                        else:
+                            count += 1
+                            wc = WebContainer(str(curpagnum).join(templatel),logfile,dr=gdr)
                     else: wc = this_page
                     resdf = current_page_to_df(wc,logfile,lblix,docix)
                     if type(resdf) != type(None): patdf = patdf.append(resdf,ignore_index=True)
@@ -297,6 +360,7 @@ def scrape_doct_page(doctors,doctors_labels,logfile=sys.stdout):
 
 
 def get_all_hosp(link,prov_name,logfile=sys.stdout):
+    global count, totcount,gdr
     # 抓取所有本页面上医院清单并以n×2列表返回
     # read metadata if exists
     if prov_name not in os.listdir(): os.mkdir('%s'%prov_name)
@@ -305,7 +369,14 @@ def get_all_hosp(link,prov_name,logfile=sys.stdout):
         with open(curdir+'/hosp_list.data','rb') as f:
             l = pickle.load(f)
     else:
-        wc = WebContainer(link,logfile)
+        if count > totcount:
+            count = 0
+            wc = WebContainer(link,logfile)
+            if gdr!=None: gdr.quit()
+            gdr = wc.dr
+        else:
+            count += 1
+            wc = WebContainer(link,logfile,dr=gdr)
         l = []
         for i in wc.xpath('//li/a[@target="_blank"]'):
             cn = i.xpath('./text()').extract_first()
@@ -318,11 +389,19 @@ def get_all_hosp(link,prov_name,logfile=sys.stdout):
 
 
 def get_all_prov(logfile=sys.stdout):
+    global count,totcount,gdr
     if 'all_prov.data' in os.listdir():
         with open('all_prov.data','rb') as f:
             l = pickle.load(f)
     else:
-        wc = WebContainer('http://www.haodf.com/yiyuan/hebei/list.htm',logfile)
+        if count > totcount:
+            count = 0
+            wc = WebContainer('http://www.haodf.com/yiyuan/hebei/list.htm',logfile)
+            if gdr!=None: gdr.quit()
+            gdr = wc.dr
+        else:
+            wc = WebContainer('http://www.haodf.com/yiyuan/hebei/list.htm',logfile,dr=gdr)
+            count += 1
         l = []
         for i in wc.xpath('//div[@class="kstl"]/a'):
             cn = i.xpath('./text()').extract_first()
