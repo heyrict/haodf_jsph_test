@@ -15,7 +15,7 @@ for prov in all_prov:
     for hosp in all_hosp:
         if '%s'%prov[0] not in os.listdir(): os.mkdir(prov[0])
         if '%s'%(hosp[0]) not in os.listdir(prov[0]): os.mkdir('%s/%s'%(prov[0],hosp[0]))
-        if hosp[0]+'.csv' not in os.listdir(prov[0]):
+        if 'pat_data.csv' not in os.listdir('%s/%s'%(prov[0],hosp[0])):
 
             doctors,doctors_labels = scrape_hospital_page(hosp[1],prov[0],hosp[0],logfile)
             doct_data = pd.DataFrame(columns=['docix','lblix','doct_name','lblname'])
@@ -30,6 +30,6 @@ for prov in all_prov:
             doct_data.merge(curdoct).to_csv('%s/%s/doct_data.csv'%(prov[0],hosp[0]),index=False)
             print('-----End Scraping hosp %s at %s-----'%(hosp[0],datetime.today().strftime(r'%Y-%m-%d %H:%M')),file=logfile)
         else:
-            print('%s.csv found in %s/. Skipping...'%(hosp[0],prov[0]))
+            print('pat_data.csv found in ./%s/%s. Skipping...'%(hosp[0],prov[0]))
 
 log.close()
