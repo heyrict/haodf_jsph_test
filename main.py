@@ -3,7 +3,9 @@ q = input('Where to store log data?[l(ogfile)/s(tdout)]: ')[0].lower()
 while 1:
     if q == 'l': logfile = open('log.txt','a');break
     elif q == 's': import sys;logfile=sys.stdout;break
-    else: print('Cannot recognize input. Check if you entered [l(ogfile)/s(tdout)]')
+    else: 
+        print('Cannot recognize input. Check if you entered [l(ogfile)/s(tdout)]')
+        q = input('Where to store log data?[l(ogfile)/s(tdout)]: ')[0].lower()
 print('\n----------\nlog start: %s\n----------'%datetime.today().strftime(r'%Y-%m-%d %H:%M'),file=logfile)
 
 #all_prov: n*2 list

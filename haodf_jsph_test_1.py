@@ -39,17 +39,17 @@ def get_illness(logfile=sys.stdout):
         illness_dict = pd.DataFrame(columns=['illness_ix','illness_name','illness_link'])
         subsection_dict = pd.DataFrame(columns=['section_ix','subsection_ix','subsection_name'])
         ## get all sections
-        sections = WebContainer('http://www.haodf.com/jibing/erkezonghe/list.htm',dr,logfile).xpath('//div[@class="kstl"]//a')
+        sections = WebContainer('http://www.haodf.com/jibing/erkezonghe/list.htm',logfile).xpath('//div[@class="kstl"]//a')
         section_df = pd.DataFrame(np.array([sections.xpath('./@href').extract(),sections.xpath('./text()').extract()]).T,columns=['section_link','section_name'])
         section_df['section_ix'] = np.arange(len(section_df))
         for i in range(len(section_df)):
-            subsections = WebContainer(true_link(section_df.ix[i,'section_link']),dr,logfile).xpath('//div[@class="ksbd"]//a')
+            subsections = WebContainer(true_link(section_df.ix[i,'section_link']),logfile).xpath('//div[@class="ksbd"]//a')
             subsection_df = pd.DataFrame(np.array([subsections.xpath('./@href').extract(),subsections.xpath('./text()').extract()]).T,columns=['subsection_link','subsection_name'])
             subsection_df['subsection_ix'] = np.arange(len(subsection_df))
             subsection_df['section_ix'] = section_df.ix[i,'section_ix']
             subsection_dict = subsection_dict.append(subsection_df[['section_ix','subsection_ix','subsection_name']],ignore_index=True)
             for j in range(len(subsection_df)):
-                illness = WebContainer(true_link(subsection_df.ix[j,'subsection_link']),dr,logfile).xpath('//div[@class="m_ctt_green"]//a')
+                illness = WebContainer(true_link(subsection_df.ix[j,'subsection_link']),logfile).xpath('//div[@class="m_ctt_green"]//a')
                 illness_df = pd.DataFrame(np.array([illness.xpath('./@href').extract(),illness.xpath('./text()').extract()]).T,columns=['illness_link','illness_name'])
                 illness_df['illness_ix'] = np.arange(len(illness_df))
                 illness_df['illness_ix'] = illness_df['illness_ix'].map(lambda x: "%02d%03d%03d"%(section_df.ix[i,'section_ix'],subsection_df.ix[j,'subsection_ix'],x))
@@ -121,14 +121,14 @@ def current_page_to_df(this_page,logfile,lblix,docix):
             elif tempilns in illnessix:
                 curpat['illness'] = illnessix[tempilns] 
             elif tempilns in illness_add_dict['illness_link'].unique():
-                curpat['illness'] = illness_add_dict[illness_add_dict['illness_link']==tempilns]['illness_ix'][0]
+                curpat['illness'] = int(illness_add_dict[illness_add_dict['illness_link']==tempilns]['illness_ix'])
             elif re.findall('.htm',tempilns):
                 curpat['illness'] = len(illness_add_dict)+100000000
                 illness_add_dict = illness_add_dict.append({'illness_link':tempilns,'illness_ix':len(illness_add_dict)+100000000},ignore_index=True)
                 illness_add_dict.to_csv('index_data/illness_add_dict.csv',index=False) 
             else:
                 print('Info: illness %s not found in database'%curpat['illness'],file=logfile)
-        except Exception as e: print(e)
+        except Exception as e: print('Exception on adding illness raised: %s'%e)
 
         ## aim
         for i in patbriefinfo.xpath('.//td[@colspan="3"]/span/text()').extract():
@@ -193,7 +193,7 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile=sys.stdout):
             doctors_labels = pickle.load(f)
     else:
         # if stored data not found
-        wc = WebContainer(link,dr,logfile)
+        wc = WebContainer(link,logfile)
         ## get all sections
         sections = []
         for i in wc.xpath('//table[@id="hosbra"]//a[@class="blue"]'):
@@ -203,7 +203,8 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile=sys.stdout):
         doctors = []
         doctors_labels = []
         for i in sections:
-            wc = WebContainer(i[1],dr,logfile)
+            wc = WebContainer(i[1],logfile)
+            if wc.isempty: continue
             doctors_on_this_section = [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
             try:
                 all_pages = range(1,int(wc.xpath('//a[@class="p_text"][@rel="true"]/text()').extract_first().strip()[1:-1])+1)
@@ -225,7 +226,8 @@ def scrape_hospital_page(link,prov_name,hosp_name,logfile=sys.stdout):
             ### find all pages
             for j in all_pages:
                 j = str(j).join(templatel)
-                wc = WebContainer(j,dr,logfile)
+                wc = WebContainer(j,logfile)
+                if wc.isempty: continue
                 doctors_on_this_section += [(t.xpath('./text()').extract()[0],t.xpath('./@href').extract()[0]) for t in wc.xpath('//a[@class="name"][@target="_blank"]')]
             doctors_labels.append(i[0])
             doctors.append(doctors_on_this_section)
@@ -245,12 +247,8 @@ def scrape_doct_page(doctors,doctors_labels,logfile=sys.stdout):
     for lblix in range(len(doctors)):
         for docix in range(len(doctors[lblix])):
             # scrape the current page
-            while 1:
-                try:
-                    this_page = WebContainer(doctors[lblix][docix][1],dr,logfile)
-                except Exception as e:
-                    print(e);continue
-                break 
+            this_page = WebContainer(doctors[lblix][docix][1],logfile)
+            if this_page.isempty: continue
             # get doctor's info
             curdoct = Series({'lblix':lblix,'docix':docix},index=['lblix','docix','hot','tot_sat_eff','tot_sat_att','tot_NoP','NoP_in_2weeks'])
             curdoct['hot'] = this_page.xpath('//div[@class="fl r-p-l"]/p[@class="r-p-l-score"]/text()').extract_first()
@@ -268,7 +266,8 @@ def scrape_doct_page(doctors,doctors_labels,logfile=sys.stdout):
             # if multiple pages exists
             if a:
                 # handling all patient data
-                wc = WebContainer(a,dr,logfile)
+                wc = WebContainer(a,logfile)
+                if wc.isempty: continue
                 a = wc.xpath('//div[@class="p_bar"]/a[@class="p_num"]/@href').extract_first()
                 templatel = a.split('2.htm'); templatel[1]+='.htm'
                 if len(templatel)!=2: print('Error in handling adress: %s.Skipping'%a,file=logfile);continue
@@ -282,7 +281,7 @@ def scrape_doct_page(doctors,doctors_labels,logfile=sys.stdout):
                 while curpagnum<=totpagnum:
                     ## scrape all pages
                     if curpagnum != 1: 
-                        wc = WebContainer(str(curpagnum).join(templatel),dr,logfile)
+                        wc = WebContainer(str(curpagnum).join(templatel),logfile)
                     else: wc = this_page
                     resdf = current_page_to_df(wc,logfile,lblix,docix)
                     if type(resdf) != type(None): patdf = patdf.append(resdf,ignore_index=True)
@@ -306,7 +305,7 @@ def get_all_hosp(link,prov_name,logfile=sys.stdout):
         with open(curdir+'/hosp_list.data','rb') as f:
             l = pickle.load(f)
     else:
-        wc = WebContainer(link,dr,logfile)
+        wc = WebContainer(link,logfile)
         l = []
         for i in wc.xpath('//li/a[@target="_blank"]'):
             cn = i.xpath('./text()').extract_first()
@@ -323,7 +322,7 @@ def get_all_prov(logfile=sys.stdout):
         with open('all_prov.data','rb') as f:
             l = pickle.load(f)
     else:
-        wc = WebContainer('http://www.haodf.com/yiyuan/hebei/list.htm',dr,logfile)
+        wc = WebContainer('http://www.haodf.com/yiyuan/hebei/list.htm',logfile)
         l = []
         for i in wc.xpath('//div[@class="kstl"]/a'):
             cn = i.xpath('./text()').extract_first()
